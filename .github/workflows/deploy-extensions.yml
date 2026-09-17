@@ -1,0 +1,61 @@
+name: Deploy Extensions
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish_cws:
+        description: "Publish to Chrome Web Store"
+        required: false
+        default: "true"
+        type: boolean
+      publish_amo:
+        description: "Publish to Mozilla Add-ons (Firefox)"
+        required: false
+        default: "true"
+        type: boolean
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests & validation
+        run: |
+          npm test
+          npm run typecheck
+          npm run build
+          npm run validate
+          npm run package
+
+      - name: Publish to Chrome Web Store
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_cws != 'false' }}
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CWS_PUBLISH: "true"
+        run: npm run publish:cws
+
+      - name: Publish to Mozilla Add-ons (AMO)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_amo != 'false' }}
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: npm run publish:amo
