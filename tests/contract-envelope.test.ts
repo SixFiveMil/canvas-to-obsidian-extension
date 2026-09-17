@@ -10,38 +10,39 @@ describe("CanvasSyncEnvelope protocol v1 contract", () => {
       fetchedAt: new Date().toISOString(),
       modules: [
         {
-          id: 1,
+          id: "1",
           name: "Module 1: Getting Started",
           position: 1,
           items: [
             {
-              id: 101,
+              id: "101",
               title: "Welcome Page",
               type: "WikiPage",
               position: 1,
-              page_url: "welcome"
+              pageSlug: "welcome"
             }
           ]
         }
       ],
+      pages: [],
       assignments: [
         {
-          id: 201,
+          id: "201",
           name: "Assignment 1",
-          points_possible: 100,
-          due_at: "2026-10-01T23:59:59Z"
+          pointsPossible: 100,
+          dueAt: "2026-10-01T23:59:59Z"
         }
-      ]
+      ],
+      discussions: [],
+      events: []
     };
 
     const envelope: CanvasSyncEnvelope = {
-      protocol: "canvas-sync-bridge",
       version: "1",
       source: "canvas-browser-extension",
       payload: samplePayload
     };
 
-    expect(envelope.protocol).toBe("canvas-sync-bridge");
     expect(envelope.version).toBe("1");
     expect(envelope.source).toBe("canvas-browser-extension");
     expect(envelope.payload.courseId).toBe("12345");
