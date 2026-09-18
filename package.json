@@ -1,6 +1,6 @@
 {
   "name": "canvas-to-obsidian-extension",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "license": "MIT",
   "description": "Browser extension that extracts Canvas LMS course content from an active session and forwards to Obsidian.",
   "author": "Joshua A. Wortz <security@codeandcypher.com> (https://github.com/SixFiveMil)",
