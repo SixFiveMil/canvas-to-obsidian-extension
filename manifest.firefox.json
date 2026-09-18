@@ -33,13 +33,6 @@
     "https://*.canvaslms.com/*",
     "https://*.canvas.com/*"
   ],
-  "optional_host_permissions": [
-    "http://127.0.0.1/*",
-    "http://localhost/*",
-    "https://*.instructure.com/*",
-    "https://*.canvaslms.com/*",
-    "https://*.canvas.com/*"
-  ],
   "background": {
     "scripts": ["background.js"]
   }

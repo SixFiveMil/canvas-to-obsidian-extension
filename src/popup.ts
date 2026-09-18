@@ -108,25 +108,7 @@ async function saveStoredOptions(): Promise<void> {
 }
 
 async function ensureBridgePermission(): Promise<boolean> {
-  const origins = ["http://127.0.0.1/*", "http://localhost/*"];
-  const browserPermissions = typeof browser !== "undefined" ? browser?.permissions : undefined;
-  const permissionsApi = chrome.permissions ?? browserPermissions;
-
-  if (!permissionsApi) {
-    return true;
-  }
-
-  try {
-    const has = await permissionsApi.contains?.({ origins }).catch(() => false);
-    if (has) {
-      return true;
-    }
-
-    const granted = await permissionsApi.request?.({ origins }).catch(() => false);
-    return !!granted;
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 function setStatus(message: string, className: "" | "ok" | "error"): void {
