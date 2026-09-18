@@ -37,11 +37,11 @@ Download the standalone pre-packaged extension archives from the latest release:
 
 ## 🔌 Companion Obsidian Plugin
 
-This extension requires the **Canvas Sync** plugin installed and running in Obsidian:
+This extension requires the **Canvas Sync Bridge** plugin installed and running in Obsidian:
 
 * **Repository**: [SixFiveMil/obsidian-canvas-sync](https://github.com/SixFiveMil/obsidian-canvas-sync)
 * **Latest Plugin Release (`main.js`, `manifest.json`, `styles.css`)**: [Obsidian Plugin Latest Release](https://github.com/SixFiveMil/obsidian-canvas-sync/releases/latest)
-* **Obsidian Community Directory**: [Canvas Sync on Community Plugins](https://community.obsidian.md/plugins/obsidian-canvas-sync)
+* **Obsidian Community Directory**: [Canvas Sync Bridge on Community Plugins](https://community.obsidian.md/plugins/canvas-sync-bridge)
 
 ---
 
