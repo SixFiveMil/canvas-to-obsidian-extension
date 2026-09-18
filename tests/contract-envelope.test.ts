@@ -49,4 +49,19 @@ describe("CanvasSyncEnvelope protocol v1 contract", () => {
     expect(envelope.payload.modules).toHaveLength(1);
     expect(envelope.payload.assignments).toHaveLength(1);
   });
+
+  it("maintains version consistency across package.json and all manifests", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const root = path.resolve(__dirname, "..");
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(root, "package.json"), "utf8"));
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(root, "manifest.json"), "utf8"));
+    const chromeManifest = JSON.parse(fs.readFileSync(path.resolve(root, "manifest.chrome.json"), "utf8"));
+    const firefoxManifest = JSON.parse(fs.readFileSync(path.resolve(root, "manifest.firefox.json"), "utf8"));
+
+    expect(manifest.version).toBe(pkg.version);
+    expect(chromeManifest.version).toBe(pkg.version);
+    expect(firefoxManifest.version).toBe(pkg.version);
+  });
 });
+

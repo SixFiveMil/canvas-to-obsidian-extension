@@ -11,15 +11,20 @@ on:
         description: "Release tag (e.g. 0.3.1)"
         required: false
         type: string
-      publish_cws:
-        description: "Publish to Chrome Web Store"
+      dry_run:
+        description: "Dry run (test build only - do not upload to stores or create GitHub release)"
         required: false
-        default: "true"
+        default: false
+        type: boolean
+      publish_cws:
+        description: "Publish to Chrome Web Store (ignored if dry run)"
+        required: false
+        default: false
         type: boolean
       publish_amo:
-        description: "Publish to Mozilla Add-ons (Firefox)"
+        description: "Publish to Mozilla Add-ons (Firefox) (ignored if dry run)"
         required: false
-        default: "true"
+        default: false
         type: boolean
 
 permissions:
@@ -32,6 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+      IS_DRY_RUN: ${{ github.event.inputs.dry_run == true || github.event.inputs.dry_run == 'true' }}
 
     steps:
       - name: Checkout
@@ -58,6 +64,7 @@ jobs:
           npm run package
 
       - name: Attest build provenance for release archives
+        if: ${{ env.IS_DRY_RUN != 'true' }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -65,6 +72,7 @@ jobs:
             release/canvas-to-obsidian-sync-firefox-*.zip
 
       - name: Publish GitHub release with zip archives
+        if: ${{ env.IS_DRY_RUN != 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')) }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -76,7 +84,7 @@ jobs:
 
       - name: Publish to Chrome Web Store
         continue-on-error: true
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_cws != 'false' }}
+        if: ${{ env.IS_DRY_RUN != 'true' && (github.event_name == 'push' || github.event.inputs.publish_cws == true || github.event.inputs.publish_cws == 'true') }}
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
@@ -87,7 +95,7 @@ jobs:
 
       - name: Publish to Mozilla Add-ons (AMO)
         continue-on-error: true
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_amo != 'false' }}
+        if: ${{ env.IS_DRY_RUN != 'true' && (github.event_name == 'push' || github.event.inputs.publish_amo == true || github.event.inputs.publish_amo == 'true') }}
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}

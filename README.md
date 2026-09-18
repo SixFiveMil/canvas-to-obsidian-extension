@@ -5,7 +5,7 @@
 [![Plugin Release](https://img.shields.io/github/v/release/SixFiveMil/obsidian-canvas-sync?label=Obsidian%20Plugin&color=purple)](https://github.com/SixFiveMil/obsidian-canvas-sync/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Browser extension companion for the [Obsidian Canvas Sync Bridge](https://github.com/SixFiveMil/obsidian-canvas-sync) plugin.
+Browser extension companion for the [Obsidian Canvas Sync](https://github.com/SixFiveMil/obsidian-canvas-sync) plugin.
 
 Extracts Canvas LMS courses, modules, assignments, submissions, rubrics, announcements, discussions, files, and calendar events directly from your authenticated browser session and securely sends them to Obsidian via a local HTTP bridge (`http://127.0.0.1:27125`).
 
@@ -37,11 +37,11 @@ Download the standalone pre-packaged extension archives from the latest release:
 
 ## 🔌 Companion Obsidian Plugin
 
-This extension requires the **Canvas Sync Bridge** plugin installed and running in Obsidian:
+This extension requires the **Canvas Sync** plugin installed and running in Obsidian:
 
 * **Repository**: [SixFiveMil/obsidian-canvas-sync](https://github.com/SixFiveMil/obsidian-canvas-sync)
 * **Latest Plugin Release (`main.js`, `manifest.json`, `styles.css`)**: [Obsidian Plugin Latest Release](https://github.com/SixFiveMil/obsidian-canvas-sync/releases/latest)
-* **Obsidian Community Directory**: [Canvas Sync Bridge on Community Plugins](https://community.obsidian.md/plugins/canvas-sync-bridge)
+* **Obsidian Community Directory**: [Canvas Sync on Community Plugins](https://community.obsidian.md/plugins/obsidian-canvas-sync)
 
 ---
 

@@ -139,6 +139,12 @@ async function publishFirefox(options = {}) {
 
 async function main() {
   const args = process.argv.slice(2);
+  const isDryRun = args.includes("--dry-run") || process.env.DRY_RUN === "true";
+  if (isDryRun) {
+    console.log("[DRY-RUN] Test build detected. Skipping store uploads and external publishing.");
+    return;
+  }
+
   const target = args.find(a => ["chrome", "firefox", "all"].includes(a)) || "all";
   const publishFlag = args.includes("--publish");
   const channelArg = args.find(a => a.startsWith("--channel="))?.split("=")[1] || "listed";

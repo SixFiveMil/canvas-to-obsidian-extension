@@ -39,7 +39,9 @@
     "typecheck": "tsc --noEmit",
     "publish:stores": "node scripts/publish-stores.mjs all",
     "publish:cws": "node scripts/publish-stores.mjs chrome",
-    "publish:amo": "node scripts/publish-stores.mjs firefox"
+    "publish:amo": "node scripts/publish-stores.mjs firefox",
+    "version": "node scripts/sync-version.mjs",
+    "version:sync": "node scripts/sync-version.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.315",
