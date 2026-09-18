@@ -21,9 +21,6 @@ import { DEFAULT_BROWSER_OPTIONS } from "./types";
 import { isCanvasUrl } from "./sync-utils";
 
 declare const browser: {
-  tabs?: {
-    executeScript?: (tabId: number, details: { code?: string; allFrames?: boolean }) => Promise<unknown[]>;
-  };
   scripting?: {
     executeScript?: (options: {
       target: { tabId: number };
@@ -256,28 +253,15 @@ async function executeScriptInTab<Args extends unknown[], ReturnType>(
   func: (...args: Args) => ReturnType | Promise<ReturnType>,
   args: Args
 ): Promise<ReturnType> {
-  const isFirefox = typeof browser !== "undefined" && Boolean(browser?.tabs?.executeScript);
+  const scriptingApi = chrome.scripting ?? (typeof browser !== "undefined" ? browser?.scripting : undefined);
 
-  if (chrome.scripting?.executeScript) {
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func,
-        args
-      });
-      return results?.[0]?.result as ReturnType;
-    } catch (chromeError) {
-      if (!isFirefox || !browser?.tabs?.executeScript) {
-        throw chromeError;
-      }
-    }
-  }
-
-  if (isFirefox && browser?.tabs?.executeScript) {
-    const serializedArgs = JSON.stringify(args);
-    const code = `(${func.toString()})(...${serializedArgs})`;
-    const results = await browser.tabs.executeScript(tabId, { code });
-    return results?.[0] as ReturnType;
+  if (scriptingApi?.executeScript) {
+    const results = await scriptingApi.executeScript({
+      target: { tabId },
+      func,
+      args
+    });
+    return results?.[0]?.result as ReturnType;
   }
 
   throw new Error("No compatible script execution API available.");
