@@ -7,6 +7,10 @@ on:
       - "*.*.*"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Release tag (e.g. 0.3.1)"
+        required: false
+        type: string
       publish_cws:
         description: "Publish to Chrome Web Store"
         required: false
@@ -18,13 +22,23 @@ on:
         default: "true"
         type: boolean
 
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag && format('refs/tags/{0}', github.event.inputs.release_tag) || github.ref }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,7 +57,25 @@ jobs:
           npm run validate
           npm run package
 
+      - name: Attest build provenance for release archives
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/canvas-to-obsidian-sync-chrome-*.zip
+            release/canvas-to-obsidian-sync-firefox-*.zip
+
+      - name: Publish GitHub release with zip archives
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          files: |
+            release/canvas-to-obsidian-sync-chrome-*.zip
+            release/canvas-to-obsidian-sync-firefox-*.zip
+            release/checksums.txt
+
       - name: Publish to Chrome Web Store
+        continue-on-error: true
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_cws != 'false' }}
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
@@ -54,6 +86,7 @@ jobs:
         run: npm run publish:cws
 
       - name: Publish to Mozilla Add-ons (AMO)
+        continue-on-error: true
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_amo != 'false' }}
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
