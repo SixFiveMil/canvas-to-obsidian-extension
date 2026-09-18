@@ -36,6 +36,7 @@
     "lint": "npm run lint:firefox",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:bridge": "node scripts/test-bridge.mjs",
     "typecheck": "tsc --noEmit",
     "publish:stores": "node scripts/publish-stores.mjs all",
     "publish:cws": "node scripts/publish-stores.mjs chrome",
