@@ -25,39 +25,56 @@ async function publishChrome(zipPath, options = {}) {
   console.log(`[CWS] Authenticating with Chrome Web Store API for extension ID: ${extensionId}...`);
 
   // Step 1: Obtain access token
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token"
-    })
-  });
+  let tokenRes;
+  try {
+    tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId.trim(),
+        client_secret: clientSecret.trim(),
+        refresh_token: refreshToken.trim(),
+        grant_type: "refresh_token"
+      })
+    });
+  } catch (netErr) {
+    throw new Error(`[CWS] Network error connecting to Google OAuth endpoint: ${netErr.message}`);
+  }
 
-  const tokenData = await tokenRes.json();
+  const tokenData = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok || !tokenData.access_token) {
-    throw new Error(`[CWS] Failed to fetch access token: ${JSON.stringify(tokenData)}`);
+    const errorDetails = tokenData.error_description || tokenData.error || JSON.stringify(tokenData);
+    if (tokenData.error === "invalid_grant") {
+      throw new Error(`[CWS] OAuth Error: 'invalid_grant' (${errorDetails}). The CHROME_REFRESH_TOKEN is invalid or expired. Re-generate it in OAuth Playground using your Web App Client ID & Secret.`);
+    } else if (tokenData.error === "unauthorized_client" || tokenData.error === "invalid_client") {
+      throw new Error(`[CWS] OAuth Error: '${tokenData.error}' (${errorDetails}). Verify CHROME_CLIENT_ID and CHROME_CLIENT_SECRET match the Web Application credentials in Google Cloud Console.`);
+    }
+    throw new Error(`[CWS] Failed to fetch access token: ${errorDetails}`);
   }
 
   const accessToken = tokenData.access_token;
-  console.log("[CWS] Access token obtained. Uploading extension package...");
+  console.log("[CWS] Access token obtained. Uploading extension package to item ID: " + extensionId.trim() + "...");
 
   // Step 2: Upload package
   const zipBuffer = readFileSync(zipPath);
-  const uploadRes = await fetch(`https://www.googleapis.com/upload/chromewebstore/v1.1/items/${extensionId}`, {
-    method: "PUT",
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "x-goog-api-version": "2"
-    },
-    body: zipBuffer
-  });
+  let uploadRes;
+  try {
+    uploadRes = await fetch(`https://www.googleapis.com/upload/chromewebstore/v1.1/items/${extensionId.trim()}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "x-goog-api-version": "2"
+      },
+      body: zipBuffer
+    });
+  } catch (netErr) {
+    throw new Error(`[CWS] Network error uploading package to Chrome Web Store: ${netErr.message}`);
+  }
 
-  const uploadData = await uploadRes.json();
+  const uploadData = await uploadRes.json().catch(() => ({}));
   if (!uploadRes.ok || uploadData.uploadState === "FAILURE") {
-    throw new Error(`[CWS] Package upload failed: ${JSON.stringify(uploadData)}`);
+    const itemErrors = uploadData.itemError ? JSON.stringify(uploadData.itemError) : JSON.stringify(uploadData);
+    throw new Error(`[CWS] Package upload failed (HTTP ${uploadRes.status}): ${itemErrors}. Note: First-time extension items must have their initial zip draft uploaded once manually in the Chrome Web Store Developer Dashboard before API uploads are permitted.`);
   }
 
   console.log(`[CWS] Package uploaded successfully: status=${uploadData.uploadState || "SUCCESS"}`);
