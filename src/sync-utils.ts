@@ -94,7 +94,7 @@ export function parseRubricCriteria(item: unknown): CanvasAssignmentPayload["rub
 
   return criteria.length > 0 ? criteria : undefined;
 }
-export const COURSE_CODE_REGEX = /\b([A-Z]{2,5}[-\s]?\d{3,4}[A-Z]?)\b/i;
+export const COURSE_CODE_REGEX = /\b([A-Z]{2,5}[-\s]?\d{3,4}(?:-\d{1,3}|[A-Z])?)\b/i;
 
 export function extractCourseCode(text: string): string | null {
   if (!text || typeof text !== "string") {
@@ -130,6 +130,11 @@ export function cleanCourseName(rawText: string, courseCode?: string | null): st
 
   let cleaned = rawText.trim();
 
+  // Strip common Canvas page title prefixes (e.g. "Announcements:", "Assignments -", "Grades for ...")
+  cleaned = cleaned
+    .replace(/^(?:Announcements|Assignments|Discussions|Discussion\s+Topics|Modules|Pages|Wiki\s+Pages|Files|Grades(?:\s+for\s+[^:]+)?|Syllabus|Quizzes|People|Outcomes|Conferences|Collaborations|Settings|Course\s+Home|Home)\s*[-:|•]\s*/i, "")
+    .trim();
+
   // Strip common Canvas page title suffixes
   cleaned = cleaned
     .replace(/\s*[-:|•]\s*Canvas(?:\s+LMS)?.*$/i, "")
@@ -137,14 +142,20 @@ export function cleanCourseName(rawText: string, courseCode?: string | null): st
     .replace(/\s*[-:|•]\s*Modules$/i, "")
     .replace(/\s*[-:|•]\s*Syllabus$/i, "")
     .replace(/\s*[-:|•]\s*Assignments$/i, "")
+    .replace(/\s*[-:|•]\s*Announcements$/i, "")
+    .replace(/\s*[-:|•]\s*Discussions$/i, "")
+    .replace(/\s*[-:|•]\s*Files$/i, "")
+    .replace(/\s*[-:|•]\s*Grades$/i, "")
+    .replace(/\s*[-:|•]\s*Pages$/i, "")
+    .replace(/\s*[-:|•]\s*Quizzes$/i, "")
     .trim();
 
   // If a course code is identified, remove it from the beginning or end of courseName to prevent duplication
   const code = courseCode || extractCourseCode(cleaned);
   if (code) {
     const escapedCode = code.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-    cleaned = cleaned.replace(new RegExp(`^${escapedCode}\\s*[-:]*\\s*`, "i"), "");
-    cleaned = cleaned.replace(new RegExp(`\\s*[([]?\\s*${escapedCode}\\s*[)\\]]?$`, "i"), "");
+    cleaned = cleaned.replace(new RegExp(`^${escapedCode}(?:-\\d{1,3})?\\s*[-:]*\\s*`, "i"), "");
+    cleaned = cleaned.replace(new RegExp(`\\s*[([]?\\s*${escapedCode}(?:-\\d{1,3})?\\s*[)\\]]?$`, "i"), "");
   }
 
   cleaned = cleaned.replace(/\s+/g, " ").trim();
