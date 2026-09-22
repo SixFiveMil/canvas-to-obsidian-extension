@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasSyncEnvelope, CanvasCoursePayload } from "../src/types";
+import { DEFAULT_BROWSER_OPTIONS } from "../src/types";
 
 describe("CanvasSyncEnvelope protocol v1 contract", () => {
   it("generates envelope adhering to v1 bridge schema", () => {
@@ -34,6 +35,14 @@ describe("CanvasSyncEnvelope protocol v1 contract", () => {
         }
       ],
       discussions: [],
+      announcements: [
+        {
+          id: "301",
+          title: "Welcome to Class",
+          messageHtml: "<p>Welcome everyone!</p>",
+          postedAt: "2026-09-01T08:00:00Z"
+        }
+      ],
       events: []
     };
 
@@ -48,6 +57,14 @@ describe("CanvasSyncEnvelope protocol v1 contract", () => {
     expect(envelope.payload.courseId).toBe("12345");
     expect(envelope.payload.modules).toHaveLength(1);
     expect(envelope.payload.assignments).toHaveLength(1);
+    expect(envelope.payload.announcements).toHaveLength(1);
+  });
+
+  it("verifies DEFAULT_BROWSER_OPTIONS structure", () => {
+    expect(DEFAULT_BROWSER_OPTIONS.extractAnnouncements).toBe(true);
+    expect(DEFAULT_BROWSER_OPTIONS.bridgePairingToken).toBe("");
+    expect(DEFAULT_BROWSER_OPTIONS.extractModules).toBe(true);
+    expect(DEFAULT_BROWSER_OPTIONS.bridgePort).toBe(27125);
   });
 
   it("maintains version consistency across package.json and all manifests", async () => {
@@ -64,4 +81,5 @@ describe("CanvasSyncEnvelope protocol v1 contract", () => {
     expect(firefoxManifest.version).toBe(pkg.version);
   });
 });
+
 

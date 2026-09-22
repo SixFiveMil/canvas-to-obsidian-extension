@@ -15,7 +15,9 @@ import type {
   CanvasSubmissionAttachment,
   CanvasSubmissionComment,
   CanvasSubmissionPayload,
-  CanvasSyncEnvelope
+  CanvasSyncEnvelope,
+  CourseDataAvailabilityReport,
+  DataCategoryAvailability
 } from "./types";
 import { DEFAULT_BROWSER_OPTIONS } from "./types";
 import { isCanvasUrl } from "./sync-utils";
@@ -50,6 +52,11 @@ interface DetectCourseInfoMessage {
   tabId?: number;
 }
 
+interface ProbeCourseAvailabilityMessage {
+  type: "probeCourseAvailability";
+  tabId?: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -72,6 +79,22 @@ chrome.runtime.onMessage.addListener((rawMessage: unknown, _sender, sendResponse
     return true;
   }
 
+  if (rawMessage.type === "probeCourseAvailability") {
+    const probeMessage = rawMessage as unknown as ProbeCourseAvailabilityMessage;
+    void (async () => {
+      try {
+        const report = await probeCourseAvailabilityFromActiveTab(probeMessage.tabId);
+        sendResponse({ ok: true, report });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          message: error instanceof Error ? error.message : "Failed to probe course availability."
+        });
+      }
+    })();
+    return true;
+  }
+
   if (rawMessage.type !== "syncCanvasCourse") {
     return;
   }
@@ -86,7 +109,8 @@ chrome.runtime.onMessage.addListener((rawMessage: unknown, _sender, sendResponse
         syncMessage.courseCode,
         syncMessage.tabId
       );
-      const response = await postToLocalBridge(envelope, syncMessage.port ?? DEFAULT_PORT);
+      const pairingToken = syncMessage.options?.bridgePairingToken;
+      const response = await postToLocalBridge(envelope, syncMessage.port ?? DEFAULT_PORT, pairingToken);
       sendResponse({ ok: true, response });
     } catch (error) {
       sendResponse({ ok: false, message: error instanceof Error ? error.message : "Sync failed." });
@@ -189,14 +213,64 @@ async function extractFromActiveCanvasTab(
   };
 }
 
-async function postToLocalBridge(envelope: CanvasSyncEnvelope, port: number): Promise<unknown> {
+async function probeCourseAvailabilityFromActiveTab(
+  targetTabId?: number
+): Promise<CourseDataAvailabilityReport> {
+  let tabId = targetTabId;
+  let tabUrl: string | undefined;
+
+  if (typeof tabId === "number") {
+    const tab = await chrome.tabs.get(tabId).catch(() => undefined);
+    tabUrl = tab?.url;
+  }
+
+  if (!tabId || !tabUrl) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    tabId = tab?.id;
+    tabUrl = tab?.url;
+  }
+
+  if (!tabId) {
+    throw new Error("No active tab available.");
+  }
+
+  if (tabUrl && !isCanvasUrl(tabUrl)) {
+    throw new Error("Open a Canvas course tab first (URL should include /courses/{id}).");
+  }
+
+  if (tabUrl) {
+    await ensureCanvasOriginPermission(tabUrl);
+  }
+
+  await probeCanvasScriptExecution(tabId);
+
+  const report = await executeScriptInTab(tabId, probeCourseAvailabilityInPage, []);
+
+  if (!report || !report.courseId) {
+    throw new Error("Failed to scan course availability from active Canvas tab.");
+  }
+
+  return report;
+}
+
+async function postToLocalBridge(
+  envelope: CanvasSyncEnvelope,
+  port: number,
+  pairingToken?: string
+): Promise<unknown> {
   const url = `http://127.0.0.1:${port}/canvas-sync`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Canvas-Sync-Client": "canvas-browser-extension"
+  };
+
+  if (pairingToken && pairingToken.trim().length > 0) {
+    headers["X-Canvas-Bridge-Token"] = pairingToken.trim();
+  }
+
   const res = await globalThis.fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Canvas-Sync-Client": "canvas-browser-extension"
-    },
+    headers,
     body: JSON.stringify(envelope)
   });
 
@@ -333,6 +407,227 @@ function detectCanvasCourseInPage(): { courseId: string; courseCode: string; cou
   };
 }
 
+async function probeCourseAvailabilityInPage(): Promise<CourseDataAvailabilityReport> {
+  const match = window.location.pathname.match(/\/courses\/(\d+)/);
+  if (!match) {
+    throw new Error("Could not determine Canvas course ID from active URL.");
+  }
+  const courseId = match[1];
+
+  let courseName = "";
+  try {
+    const breadcrumbCourseEl = document.querySelector('#breadcrumbs a[href*="/courses/"]');
+    const breadcrumbText = breadcrumbCourseEl?.textContent?.trim() || "";
+    const courseTitleEl = document.querySelector(".course-title");
+    const courseTitleText = courseTitleEl?.textContent?.trim() || "";
+    const docTitle = document.title || "";
+
+    const COURSE_CODE_REGEX = /\b([A-Z]{2,5}[-\s]?\d{3,4}[A-Z]?)\b/i;
+    let detectedCode = "";
+    for (const text of [breadcrumbText, courseTitleText, docTitle]) {
+      const m = text.match(COURSE_CODE_REGEX);
+      if (m) {
+        detectedCode = m[1].trim();
+        break;
+      }
+    }
+
+    function cleanTitle(raw: string, code?: string): string {
+      let s = raw
+        .trim()
+        .replace(/\s*[-:|•]\s*Canvas(?:\s+LMS)?.*$/i, "")
+        .replace(/\s*[-:|•]\s*(?:Course\s+)?Home$/i, "")
+        .replace(/\s*[-:|•]\s*Modules$/i, "")
+        .replace(/\s*[-:|•]\s*Syllabus$/i, "")
+        .replace(/\s*[-:|•]\s*Assignments$/i, "")
+        .trim();
+
+      const c = code || s.match(COURSE_CODE_REGEX)?.[1];
+      if (c) {
+        const esc = c.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+        s = s.replace(new RegExp(`^${esc}\\s*[-:]*\\s*`, "i"), "");
+        s = s.replace(new RegExp(`\\s*[([]?\\s*${esc}\\s*[)\\]]?$`, "i"), "");
+      }
+      return s.replace(/\s+/g, " ").trim();
+    }
+
+    for (const text of [breadcrumbText, courseTitleText, docTitle]) {
+      const cleaned = cleanTitle(text, detectedCode);
+      if (cleaned && !cleaned.toLowerCase().startsWith("dashboard")) {
+        courseName = cleaned;
+        break;
+      }
+    }
+  } catch {
+    // Ignore DOM extraction errors
+  }
+
+  if (!courseName) {
+    courseName = `Course ${courseId}`;
+  }
+
+  function probeEndpoint(
+    key: string,
+    label: string,
+    path: string,
+    isGradesCheck = false
+  ): Promise<DataCategoryAvailability> {
+    return new Promise<DataCategoryAvailability>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `${window.location.origin}${path}`, true);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("Accept", "application/json");
+
+      xhr.onload = () => {
+        const statusCode = xhr.status;
+        if (statusCode >= 200 && statusCode < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (Array.isArray(data)) {
+              if (isGradesCheck) {
+                const count = data.length;
+                if (count > 0) {
+                  resolve({ key, label, status: "available", count, statusCode });
+                } else {
+                  resolve({ key, label, status: "empty", count: 0, statusCode });
+                }
+              } else {
+                const count = data.length;
+                resolve({
+                  key,
+                  label,
+                  status: count > 0 ? "available" : "empty",
+                  count,
+                  statusCode
+                });
+              }
+            } else if (data && typeof data === "object") {
+              const keys = Object.keys(data);
+              resolve({
+                key,
+                label,
+                status: keys.length > 0 ? "available" : "empty",
+                count: keys.length,
+                statusCode
+              });
+            } else {
+              resolve({ key, label, status: "empty", count: 0, statusCode });
+            }
+          } catch {
+            resolve({ key, label, status: "available", statusCode });
+          }
+        } else if (statusCode === 401 || statusCode === 403) {
+          resolve({
+            key,
+            label,
+            status: "restricted",
+            statusCode,
+            details: "Access restricted / permission denied"
+          });
+        } else if (statusCode === 404 || statusCode === 501) {
+          resolve({
+            key,
+            label,
+            status: "unsupported",
+            statusCode,
+            details: "Feature disabled or endpoint unsupported"
+          });
+        } else {
+          resolve({
+            key,
+            label,
+            status: "error",
+            statusCode,
+            details: `HTTP ${statusCode}`
+          });
+        }
+      };
+
+      xhr.onerror = () => {
+        resolve({
+          key,
+          label,
+          status: "error",
+          statusCode: 0,
+          details: "Network request failed"
+        });
+      };
+
+      xhr.ontimeout = () => {
+        resolve({
+          key,
+          label,
+          status: "error",
+          statusCode: 0,
+          details: "Request timed out"
+        });
+      };
+
+      xhr.timeout = 10000;
+      xhr.send();
+    });
+  }
+
+  const [
+    announcements,
+    modules,
+    pages,
+    assignments,
+    grades,
+    discussions,
+    files,
+    events
+  ] = await Promise.all([
+    probeEndpoint(
+      "announcements",
+      "Announcements",
+      `/api/v1/announcements?context_codes[]=course_${courseId}&per_page=1`
+    ),
+    probeEndpoint("modules", "Modules", `/api/v1/courses/${courseId}/modules?per_page=1`),
+    probeEndpoint("pages", "Wiki Pages", `/api/v1/courses/${courseId}/pages?per_page=1`),
+    probeEndpoint(
+      "assignments",
+      "Assignments",
+      `/api/v1/courses/${courseId}/assignments?per_page=1`
+    ),
+    probeEndpoint(
+      "grades",
+      "Grades & Submissions",
+      `/api/v1/courses/${courseId}/enrollments?user_id=self`,
+      true
+    ),
+    probeEndpoint(
+      "discussions",
+      "Discussions",
+      `/api/v1/courses/${courseId}/discussion_topics?per_page=1`
+    ),
+    probeEndpoint("files", "Files", `/api/v1/courses/${courseId}/files?per_page=1`),
+    probeEndpoint(
+      "events",
+      "Calendar Events",
+      `/api/v1/calendar_events?context_codes[]=course_${courseId}&per_page=1`
+    )
+  ]);
+
+  const categories: Record<string, DataCategoryAvailability> = {
+    announcements,
+    modules,
+    pages,
+    assignments,
+    grades,
+    discussions,
+    files,
+    events
+  };
+
+  return {
+    courseId,
+    courseName,
+    testedAt: new Date().toISOString(),
+    categories
+  };
+}
+
 async function extractCoursePayloadInPage(
   options: BrowserSyncOptions,
   customCourseName: string | null,
@@ -380,10 +675,63 @@ async function extractCoursePayloadInPage(
     return requestJson(`${window.location.origin}${path}`);
   }
 
+  // Helper for fetching replies on discussion / announcement topics
+  async function fetchDiscussionReplies(topicId: string): Promise<CanvasDiscussionEntryPayload[]> {
+    try {
+      const viewData = (await api(
+        `/api/v1/courses/${courseId}/discussion_topics/${topicId}/view`
+      )) as Record<string, unknown>;
+
+      if (isRecord(viewData) && Array.isArray(viewData.view)) {
+        const participants = new Map<string, string>();
+        if (Array.isArray(viewData.participants)) {
+          for (const p of viewData.participants) {
+            if (isRecord(p) && p.id != null && typeof p.display_name === "string") {
+              participants.set(String(p.id), p.display_name);
+            }
+          }
+        }
+
+        function parseReplies(rawList: unknown[]): CanvasDiscussionEntryPayload[] {
+          const res: CanvasDiscussionEntryPayload[] = [];
+          for (const r of rawList) {
+            if (!isRecord(r) || r.id == null) continue;
+            const uId = r.user_id != null ? String(r.user_id) : undefined;
+            const uName =
+              (uId ? participants.get(uId) : null) ||
+              (typeof r.user_name === "string" ? r.user_name : "Anonymous");
+            const msg = typeof r.message === "string" ? r.message : "";
+            const created = typeof r.created_at === "string" ? r.created_at : new Date().toISOString();
+            const updated = typeof r.updated_at === "string" ? r.updated_at : undefined;
+
+            const childReplies = Array.isArray(r.replies) ? parseReplies(r.replies) : undefined;
+
+            res.push({
+              id: String(r.id),
+              userId: uId,
+              userName: uName,
+              messageHtml: msg,
+              createdAt: created,
+              updatedAt: updated,
+              replies: childReplies && childReplies.length > 0 ? childReplies : undefined
+            });
+          }
+          return res;
+        }
+
+        return parseReplies(viewData.view);
+      }
+    } catch {
+      // Replies fetch failed
+    }
+    return [];
+  }
+
   // 1. Fetch Course details & Syllabus
   let fetchedCourseCode = customCourseCode || "";
   let fetchedCourseName = customCourseName || "";
   let syllabusHtml: string | undefined;
+  let courseDetailRecord: Record<string, unknown> | null = null;
 
   try {
     const courseDetail = (await api(
@@ -391,6 +739,7 @@ async function extractCoursePayloadInPage(
     )) as Record<string, unknown> | null;
 
     if (isRecord(courseDetail)) {
+      courseDetailRecord = courseDetail;
       if (!fetchedCourseCode && typeof courseDetail.course_code === "string" && courseDetail.course_code.trim()) {
         fetchedCourseCode = courseDetail.course_code.trim();
       }
@@ -729,7 +1078,88 @@ async function extractCoursePayloadInPage(
     }
   }
 
-  // 7. Discussions & Replies
+  // 7. Announcements & Updates
+  const announcements: CanvasDiscussionPayload[] = [];
+  if (options.extractAnnouncements) {
+    try {
+      let announcementsUrl = `/api/v1/announcements?context_codes[]=course_${courseId}&per_page=100`;
+
+      const startDate =
+        courseDetailRecord && typeof courseDetailRecord.start_at === "string"
+          ? courseDetailRecord.start_at
+          : courseDetailRecord && isRecord(courseDetailRecord.term) && typeof courseDetailRecord.term.start_at === "string"
+            ? courseDetailRecord.term.start_at
+            : undefined;
+
+      const endDate =
+        courseDetailRecord && typeof courseDetailRecord.end_at === "string"
+          ? courseDetailRecord.end_at
+          : courseDetailRecord && isRecord(courseDetailRecord.term) && typeof courseDetailRecord.term.end_at === "string"
+            ? courseDetailRecord.term.end_at
+            : undefined;
+
+      if (startDate) {
+        announcementsUrl += `&start_date=${encodeURIComponent(startDate)}`;
+      }
+      if (endDate) {
+        announcementsUrl += `&end_date=${encodeURIComponent(endDate)}`;
+      }
+
+      let rawAnnouncements: unknown[] | null = null;
+      try {
+        const fetched = await api(announcementsUrl);
+        if (isUnknownArray(fetched)) {
+          rawAnnouncements = fetched;
+        }
+      } catch {
+        // Fallback endpoint
+      }
+
+      if (!rawAnnouncements) {
+        const fallbackFetched = await api(
+          `/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=100`
+        );
+        if (isUnknownArray(fallbackFetched)) {
+          rawAnnouncements = fallbackFetched;
+        }
+      }
+
+      if (isUnknownArray(rawAnnouncements)) {
+        for (const a of rawAnnouncements) {
+          if (!isRecord(a) || a.id == null) continue;
+          const aId = String(a.id);
+          const title =
+            typeof a.title === "string" && a.title.trim() ? a.title.trim() : `Announcement ${aId}`;
+          const htmlUrl = typeof a.html_url === "string" ? a.html_url : undefined;
+          const messageHtml = typeof a.message === "string" ? a.message : undefined;
+          const postedAt = typeof a.posted_at === "string" ? a.posted_at : null;
+          const updatedAt = typeof a.updated_at === "string" ? a.updated_at : null;
+
+          let entries: CanvasDiscussionEntryPayload[] | undefined;
+          if (options.includeDiscussionReplies) {
+            const fetchedReplies = await fetchDiscussionReplies(aId);
+            if (fetchedReplies.length > 0) {
+              entries = fetchedReplies;
+            }
+          }
+
+          announcements.push({
+            id: aId,
+            title,
+            htmlUrl,
+            messageHtml,
+            postedAt,
+            updatedAt,
+            entries
+          });
+        }
+      }
+    } catch {
+      // Announcements API error
+    }
+  }
+
+  // 8. Discussions & Replies
   const discussions: CanvasDiscussionPayload[] = [];
   if (options.extractDiscussions) {
     try {
@@ -744,53 +1174,11 @@ async function extractCoursePayloadInPage(
           const postedAt = typeof d.posted_at === "string" ? d.posted_at : null;
           const updatedAt = typeof d.updated_at === "string" ? d.updated_at : null;
 
-          // Discussion Replies
-          const entries: CanvasDiscussionEntryPayload[] = [];
+          let entries: CanvasDiscussionEntryPayload[] | undefined;
           if (options.includeDiscussionReplies) {
-            try {
-              const viewData = (await api(
-                `/api/v1/courses/${courseId}/discussion_topics/${dId}/view`
-              )) as Record<string, unknown>;
-
-              if (isRecord(viewData) && Array.isArray(viewData.view)) {
-                const participants = new Map<string, string>();
-                if (Array.isArray(viewData.participants)) {
-                  for (const p of viewData.participants) {
-                    if (isRecord(p) && p.id != null && typeof p.display_name === "string") {
-                      participants.set(String(p.id), p.display_name);
-                    }
-                  }
-                }
-
-                function parseReplies(rawList: unknown[]): CanvasDiscussionEntryPayload[] {
-                  const res: CanvasDiscussionEntryPayload[] = [];
-                  for (const r of rawList) {
-                    if (!isRecord(r) || r.id == null) continue;
-                    const uId = r.user_id != null ? String(r.user_id) : undefined;
-                    const uName = (uId ? participants.get(uId) : null) || (typeof r.user_name === "string" ? r.user_name : "Anonymous");
-                    const msg = typeof r.message === "string" ? r.message : "";
-                    const created = typeof r.created_at === "string" ? r.created_at : new Date().toISOString();
-                    const updated = typeof r.updated_at === "string" ? r.updated_at : undefined;
-
-                    const childReplies = Array.isArray(r.replies) ? parseReplies(r.replies) : undefined;
-
-                    res.push({
-                      id: String(r.id),
-                      userId: uId,
-                      userName: uName,
-                      messageHtml: msg,
-                      createdAt: created,
-                      updatedAt: updated,
-                      replies: childReplies && childReplies.length > 0 ? childReplies : undefined
-                    });
-                  }
-                  return res;
-                }
-
-                entries.push(...parseReplies(viewData.view));
-              }
-            } catch {
-              // Replies fetch failed
+            const fetchedReplies = await fetchDiscussionReplies(dId);
+            if (fetchedReplies.length > 0) {
+              entries = fetchedReplies;
             }
           }
 
@@ -802,7 +1190,7 @@ async function extractCoursePayloadInPage(
             postedAt,
             updatedAt,
             moduleNames: discussionsById.get(dId),
-            entries: entries.length > 0 ? entries : undefined
+            entries
           });
         }
       }
@@ -811,7 +1199,7 @@ async function extractCoursePayloadInPage(
     }
   }
 
-  // 8. Calendar Events
+  // 9. Calendar Events
   const events: CanvasEventPayload[] = [];
   const seenEventKeys = new Set<string>();
   if (options.extractEvents) {
@@ -873,7 +1261,7 @@ async function extractCoursePayloadInPage(
     }
   }
 
-  // 9. Course Files & Document Assets Metadata
+  // 10. Course Files & Document Assets Metadata
   const files: CanvasFileAssetPayload[] = [];
   if (options.extractFiles) {
     try {
@@ -922,7 +1310,9 @@ async function extractCoursePayloadInPage(
     pages,
     assignments,
     discussions,
+    announcements: announcements.length > 0 ? announcements : undefined,
     events,
     files: files.length > 0 ? files : undefined
   };
 }
+

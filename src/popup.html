@@ -145,6 +145,96 @@
         font-size: 12px;
         margin-top: 6px;
       }
+      .token-row {
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .token-row label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .token-input-wrapper {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .token-input-wrapper input {
+        flex: 1;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+      .toggle-token-btn {
+        width: 32px !important;
+        margin: 0 !important;
+        padding: 5px 0 !important;
+        background: var(--light-bg) !important;
+        color: var(--ink) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 6px !important;
+        font-size: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .availability-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
+        margin-top: 4px;
+        margin-bottom: 6px;
+      }
+      .availability-chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--light-bg);
+        border-radius: 6px;
+        padding: 4px 6px;
+        font-size: 11px;
+        gap: 4px;
+      }
+      .availability-chip .chip-label {
+        font-weight: 500;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 10.5px;
+      }
+      .availability-chip .chip-badge {
+        font-weight: 600;
+        font-size: 9.5px;
+        padding: 1px 4px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      .status-available {
+        color: #0c644d;
+        background: #d8efe7;
+      }
+      .status-restricted {
+        color: #9a6700;
+        background: #fff8e1;
+      }
+      .status-empty {
+        color: #637067;
+        background: #e4e8e4;
+      }
+      .status-unsupported {
+        color: #7b8089;
+        background: #e9ecef;
+      }
+      .status-error {
+        color: #a0291e;
+        background: #fde8e8;
+      }
       #status {
         margin-top: 10px;
         font-size: 11px;
@@ -171,6 +261,10 @@
         <div class="title" id="courseNameDisplay">Open a Canvas course tab</div>
       </div>
 
+      <div class="section-title">Course Data Availability</div>
+      <button id="scanBtn" class="secondary" style="margin-top: 4px; margin-bottom: 6px;">Scan Availability</button>
+      <div id="availabilityContainer" class="availability-grid"></div>
+
       <div class="section-title">Extraction Options</div>
       <div class="options-grid">
         <label class="option-item">
@@ -184,6 +278,10 @@
         <label class="option-item">
           <input type="checkbox" id="optGrades" checked />
           <span>Grades & Submissions</span>
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="optAnnouncements" checked />
+          <span>Announcements & Updates</span>
         </label>
         <label class="option-item">
           <input type="checkbox" id="optDiscussions" checked />
@@ -207,6 +305,13 @@
       <div class="port-row">
         <label for="port">Obsidian Port:</label>
         <input id="port" type="number" min="1" max="65535" value="27125" />
+      </div>
+      <div class="token-row">
+        <label for="pairingToken">Bridge Pairing Token (Optional):</label>
+        <div class="token-input-wrapper">
+          <input id="pairingToken" type="password" placeholder="Optional token" autocomplete="off" />
+          <button type="button" id="toggleTokenBtn" class="toggle-token-btn" title="Toggle visibility">👁️</button>
+        </div>
       </div>
 
       <button id="syncBtn">Sync Active Course</button>
