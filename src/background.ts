@@ -355,8 +355,11 @@ function detectCanvasCourseInPage(): { courseId: string; courseCode: string; cou
   let detectedCourseCode = "";
   let detectedCourseName = "";
 
-  const breadcrumbCourseEl = document.querySelector('#breadcrumbs a[href*="/courses/"]');
-  const breadcrumbText = breadcrumbCourseEl?.textContent?.trim() || "";
+  const courseLinkEl =
+    document.querySelector(`#breadcrumbs a[href$="/courses/${courseId}"], #breadcrumbs a[href*="/courses/${courseId}"]`) ||
+    document.querySelector("#course_home_link") ||
+    document.querySelector('#breadcrumbs a[href*="/courses/"]');
+  const breadcrumbText = courseLinkEl?.textContent?.trim() || "";
 
   const courseTitleEl = document.querySelector(".course-title");
   const courseTitleText = courseTitleEl?.textContent?.trim() || "";
@@ -376,11 +379,18 @@ function detectCanvasCourseInPage(): { courseId: string; courseCode: string; cou
   function cleanTitle(raw: string, code?: string): string {
     let s = raw
       .trim()
+      .replace(/^(?:Announcements|Assignments|Discussions|Discussion\s+Topics|Modules|Pages|Wiki\s+Pages|Files|Grades(?:\s+for\s+[^:]+)?|Syllabus|Quizzes|People|Outcomes|Conferences|Collaborations|Settings|Course\s+Home|Home)\s*[-:|•]\s*/i, "")
       .replace(/\s*[-:|•]\s*Canvas(?:\s+LMS)?.*$/i, "")
       .replace(/\s*[-:|•]\s*(?:Course\s+)?Home$/i, "")
       .replace(/\s*[-:|•]\s*Modules$/i, "")
       .replace(/\s*[-:|•]\s*Syllabus$/i, "")
       .replace(/\s*[-:|•]\s*Assignments$/i, "")
+      .replace(/\s*[-:|•]\s*Announcements$/i, "")
+      .replace(/\s*[-:|•]\s*Discussions$/i, "")
+      .replace(/\s*[-:|•]\s*Files$/i, "")
+      .replace(/\s*[-:|•]\s*Grades$/i, "")
+      .replace(/\s*[-:|•]\s*Pages$/i, "")
+      .replace(/\s*[-:|•]\s*Quizzes$/i, "")
       .trim();
 
     const c = code || s.match(COURSE_CODE_REGEX)?.[1];
@@ -568,6 +578,55 @@ async function probeCourseAvailabilityInPage(): Promise<CourseDataAvailabilityRe
     });
   }
 
+  async function probeAnnouncements(): Promise<DataCategoryAvailability> {
+    const direct = await probeEndpoint(
+      "announcements",
+      "Announcements",
+      `/api/v1/announcements?context_codes[]=course_${courseId}&per_page=1`
+    );
+    if (direct.status === "available") {
+      return direct;
+    }
+    // Fallback: discussion topics filtered by announcements
+    const fallback = await probeEndpoint(
+      "announcements",
+      "Announcements",
+      `/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=1`
+    );
+    if (fallback.status === "available") {
+      return fallback;
+    }
+    return direct.status === "restricted" ? direct : fallback;
+  }
+
+  async function probePages(): Promise<DataCategoryAvailability> {
+    const direct = await probeEndpoint("pages", "Wiki Pages", `/api/v1/courses/${courseId}/pages?per_page=1`);
+    if (direct.status === "available") {
+      return direct;
+    }
+    // If pages list endpoint is 404 (tab hidden by instructor), check if front page is accessible
+    if (direct.statusCode === 404 || direct.status === "unsupported") {
+      const front = await probeEndpoint("pages", "Wiki Pages", `/api/v1/courses/${courseId}/front_page`);
+      if (front.status === "available") {
+        return {
+          key: "pages",
+          label: "Wiki Pages",
+          status: "available",
+          count: 1,
+          details: "Front page accessible"
+        };
+      }
+      return {
+        key: "pages",
+        label: "Wiki Pages",
+        status: "empty",
+        count: 0,
+        details: "Pages tab hidden (module pages still sync)"
+      };
+    }
+    return direct;
+  }
+
   const [
     announcements,
     modules,
@@ -578,13 +637,9 @@ async function probeCourseAvailabilityInPage(): Promise<CourseDataAvailabilityRe
     files,
     events
   ] = await Promise.all([
-    probeEndpoint(
-      "announcements",
-      "Announcements",
-      `/api/v1/announcements?context_codes[]=course_${courseId}&per_page=1`
-    ),
+    probeAnnouncements(),
     probeEndpoint("modules", "Modules", `/api/v1/courses/${courseId}/modules?per_page=1`),
-    probeEndpoint("pages", "Wiki Pages", `/api/v1/courses/${courseId}/pages?per_page=1`),
+    probePages(),
     probeEndpoint(
       "assignments",
       "Assignments",
@@ -740,11 +795,12 @@ async function extractCoursePayloadInPage(
 
     if (isRecord(courseDetail)) {
       courseDetailRecord = courseDetail;
-      if (!fetchedCourseCode && typeof courseDetail.course_code === "string" && courseDetail.course_code.trim()) {
-        fetchedCourseCode = courseDetail.course_code.trim();
-      }
-      if (!fetchedCourseName && typeof courseDetail.name === "string" && courseDetail.name.trim()) {
+      // Authoritative ground-truth from Canvas REST API
+      if (typeof courseDetail.name === "string" && courseDetail.name.trim()) {
         fetchedCourseName = courseDetail.name.trim();
+      }
+      if (typeof courseDetail.course_code === "string" && courseDetail.course_code.trim()) {
+        fetchedCourseCode = courseDetail.course_code.trim();
       }
       if (typeof courseDetail.syllabus_body === "string" && courseDetail.syllabus_body.trim()) {
         syllabusHtml = courseDetail.syllabus_body.trim();

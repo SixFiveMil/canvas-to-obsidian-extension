@@ -117,6 +117,27 @@ describe("cleanCourseName", () => {
     );
     expect(cleanCourseName("Foundations of Cyber Security (CSOL-500)")).toBe("Foundations of Cyber Security");
   });
+
+  it("strips Canvas subpage prefixes such as Announcements, Assignments, Discussions, Grades", () => {
+    expect(cleanCourseName("Announcements: Cyber Threat Intelligence (CSOL-580-03)", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+    expect(cleanCourseName("Announcements - CSOL-580-03: Cyber Threat Intelligence", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+    expect(cleanCourseName("Assignments: Cyber Threat Intelligence", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+    expect(cleanCourseName("Discussions: Cyber Threat Intelligence", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+    expect(cleanCourseName("Grades for Student: Cyber Threat Intelligence", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+    expect(cleanCourseName("Modules: Cyber Threat Intelligence", "CSOL-580")).toBe(
+      "Cyber Threat Intelligence"
+    );
+  });
 });
 
 describe("parseCourseInfo", () => {
