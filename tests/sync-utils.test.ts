@@ -7,7 +7,9 @@ import {
   isDashboardTitle,
   normalizeModuleItemType,
   parseCourseInfo,
-  parseRubricCriteria
+  parseRubricCriteria,
+  categorizeAvailabilityStatus,
+  getAvailabilityStatusDisplay
 } from "../src/sync-utils";
 
 describe("isCanvasUrl", () => {
@@ -157,4 +159,75 @@ describe("parseCourseInfo", () => {
     expect(result.courseName).toBe("Course 888");
   });
 });
+
+describe("categorizeAvailabilityStatus", () => {
+  it("categorizes non-empty array with 200 as available", () => {
+    expect(categorizeAvailabilityStatus(200, [{ id: 1 }])).toBe("available");
+  });
+
+  it("categorizes empty array with 200 as empty", () => {
+    expect(categorizeAvailabilityStatus(200, [])).toBe("empty");
+  });
+
+  it("categorizes non-empty object with 200 as available", () => {
+    expect(categorizeAvailabilityStatus(200, { key: "value" })).toBe("available");
+  });
+
+  it("categorizes empty object with 200 as empty", () => {
+    expect(categorizeAvailabilityStatus(200, {})).toBe("empty");
+  });
+
+  it("categorizes 401 and 403 as restricted", () => {
+    expect(categorizeAvailabilityStatus(401, null)).toBe("restricted");
+    expect(categorizeAvailabilityStatus(403, null)).toBe("restricted");
+  });
+
+  it("categorizes 404 and 501 as unsupported", () => {
+    expect(categorizeAvailabilityStatus(404, null)).toBe("unsupported");
+    expect(categorizeAvailabilityStatus(501, null)).toBe("unsupported");
+  });
+
+  it("categorizes 500 and network errors as error", () => {
+    expect(categorizeAvailabilityStatus(500, null)).toBe("error");
+    expect(categorizeAvailabilityStatus(0, null)).toBe("error");
+  });
+
+  it("handles grades check correctly", () => {
+    expect(categorizeAvailabilityStatus(200, [{ user_id: 1, grades: { current_score: 95 } }], true)).toBe(
+      "available"
+    );
+    expect(categorizeAvailabilityStatus(200, [], true)).toBe("empty");
+  });
+});
+
+describe("getAvailabilityStatusDisplay", () => {
+  it("returns appropriate badge metadata for each status", () => {
+    expect(getAvailabilityStatusDisplay("available")).toEqual({
+      icon: "🟢",
+      text: "Available",
+      badgeClass: "status-available"
+    });
+    expect(getAvailabilityStatusDisplay("restricted")).toEqual({
+      icon: "🔒",
+      text: "Restricted",
+      badgeClass: "status-restricted"
+    });
+    expect(getAvailabilityStatusDisplay("empty")).toEqual({
+      icon: "⚪",
+      text: "Empty",
+      badgeClass: "status-empty"
+    });
+    expect(getAvailabilityStatusDisplay("unsupported")).toEqual({
+      icon: "⛔",
+      text: "Unsupported",
+      badgeClass: "status-unsupported"
+    });
+    expect(getAvailabilityStatusDisplay("error")).toEqual({
+      icon: "❌",
+      text: "Error",
+      badgeClass: "status-error"
+    });
+  });
+});
+
 

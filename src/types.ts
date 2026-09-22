@@ -203,6 +203,24 @@ export interface AssetSyncDiagnostics {
   }>;
 }
 
+export type AvailabilityStatus = "available" | "empty" | "restricted" | "unsupported" | "error";
+
+export interface DataCategoryAvailability {
+  key: string;
+  label: string;
+  status: AvailabilityStatus;
+  count?: number;
+  statusCode?: number;
+  details?: string;
+}
+
+export interface CourseDataAvailabilityReport {
+  courseId: string;
+  courseName: string;
+  testedAt: string;
+  categories: Record<string, DataCategoryAvailability>;
+}
+
 export interface CanvasCoursePayload {
   courseId: string;
   courseName: string;
@@ -215,6 +233,7 @@ export interface CanvasCoursePayload {
   pages: CanvasPagePayload[];
   assignments: CanvasAssignmentPayload[];
   discussions: CanvasDiscussionPayload[];
+  announcements?: CanvasDiscussionPayload[];
   events: CanvasEventPayload[];
   files?: CanvasFileAssetPayload[];
   assetDiagnostics?: AssetSyncDiagnostics;
@@ -232,10 +251,12 @@ export interface BrowserSyncOptions {
   extractAssignments: boolean;
   extractGrades: boolean;
   extractDiscussions: boolean;
+  extractAnnouncements: boolean;
   includeDiscussionReplies: boolean;
   extractEvents: boolean;
   extractFiles: boolean;
   bridgePort: number;
+  bridgePairingToken?: string;
 }
 
 export const DEFAULT_BROWSER_OPTIONS: BrowserSyncOptions = {
@@ -244,8 +265,10 @@ export const DEFAULT_BROWSER_OPTIONS: BrowserSyncOptions = {
   extractAssignments: true,
   extractGrades: true,
   extractDiscussions: true,
+  extractAnnouncements: true,
   includeDiscussionReplies: true,
   extractEvents: true,
   extractFiles: true,
-  bridgePort: 27125
+  bridgePort: 27125,
+  bridgePairingToken: ""
 };

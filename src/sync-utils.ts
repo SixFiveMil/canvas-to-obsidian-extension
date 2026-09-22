@@ -200,3 +200,48 @@ export function parseCourseInfo(candidates: CourseInfoCandidates): { courseCode:
     courseName: detectedName
   };
 }
+
+export function categorizeAvailabilityStatus(
+  statusCode: number,
+  data: unknown,
+  isGradesCheck = false
+): "available" | "empty" | "restricted" | "unsupported" | "error" {
+  if (statusCode >= 200 && statusCode < 300) {
+    if (Array.isArray(data)) {
+      if (isGradesCheck) {
+        return data.length > 0 ? "available" : "empty";
+      }
+      return data.length > 0 ? "available" : "empty";
+    }
+    if (data && typeof data === "object") {
+      return Object.keys(data).length > 0 ? "available" : "empty";
+    }
+    return "available";
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return "restricted";
+  }
+  if (statusCode === 404 || statusCode === 501) {
+    return "unsupported";
+  }
+  return "error";
+}
+
+export function getAvailabilityStatusDisplay(
+  status: "available" | "empty" | "restricted" | "unsupported" | "error"
+): { icon: string; text: string; badgeClass: string } {
+  switch (status) {
+    case "available":
+      return { icon: "🟢", text: "Available", badgeClass: "status-available" };
+    case "restricted":
+      return { icon: "🔒", text: "Restricted", badgeClass: "status-restricted" };
+    case "empty":
+      return { icon: "⚪", text: "Empty", badgeClass: "status-empty" };
+    case "unsupported":
+      return { icon: "⛔", text: "Unsupported", badgeClass: "status-unsupported" };
+    case "error":
+    default:
+      return { icon: "❌", text: "Error", badgeClass: "status-error" };
+  }
+}
+
